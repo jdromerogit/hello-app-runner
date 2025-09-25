@@ -152,9 +152,17 @@ def index(request):
 def headers(request):
     return JSONResponse(dumps({k:v for k, v in request.headers.items()}))
 
+def envvars(request):
+    # Devuelve las variables de entorno que añadimos en apprunner.yaml
+    return JSONResponse({
+        "plantillas": getenv("S3_BUCKET_PLANTILLAS"),
+        "resultados": getenv("S3_BUCKET_RESULTADOS")
+    })
+    
 routes = [
     Route('/', endpoint=index),
     Route('/headers', endpoint=headers),
+    Route('/env', endpoint=envvars),  # <- NUEVA RUTA
     Mount('/static', app=StaticFiles(directory='static'), name='static'),
 ]
 
@@ -164,8 +172,11 @@ app.add_route("/metrics", handle_metrics)
 
 config = Config()
 
-
 if __name__ == "__main__":
+    # Logs para confirmar variables en App Runner
+    logging.info("S3_BUCKET_PLANTILLAS=%s", getenv("S3_BUCKET_PLANTILLAS"))
+    logging.info("S3_BUCKET_RESULTADOS=%s", getenv("S3_BUCKET_RESULTADOS"))
+
     uvicorn.run("app:app", host="0.0.0.0",
                 port=int(getenv('PORT', 8000)),
                 log_level=getenv('LOG_LEVEL', "info"),
