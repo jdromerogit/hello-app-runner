@@ -3,9 +3,14 @@ runtime: python3
 build:
   commands:
     build:
-    - yum install -y pycairo
-    - pip install -r requirements.txt
+      - yum install -y pycairo
+      - pip install -r requirements.txt
 run:
   command: python app.py
   network:
     port: 8000
+  env:
+    - name: S3_BUCKET_PLANTILLAS
+      value: pe-plantillas-doc-motor
+    - name: S3_BUCKET_RESULTADOS
+      value: pe-resultados-doc-motor
