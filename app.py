@@ -15,6 +15,10 @@ from requests import get
 from os import getenv, urandom, path, environ
 from PIL import Image
 
+import boto3, time
+from botocore.exceptions import ClientError
+
+
 templates = Jinja2Templates(directory='templates')
 
 global_state = {
@@ -152,6 +156,50 @@ def index(request):
 def headers(request):
     return JSONResponse(dumps({k:v for k, v in request.headers.items()}))
 
+def s3_test(request):
+    s3 = boto3.client("s3")
+    bucket_plantillas = getenv("S3_BUCKET_PLANTILLAS")
+    bucket_resultados = getenv("S3_BUCKET_RESULTADOS")
+    plantilla_key = "pe_plantilla_solicitud_v2_test.docx"  # <-- tu archivo en S3
+
+    result = {
+        "bucket_plantillas": bucket_plantillas,
+        "bucket_resultados": bucket_resultados,
+        "plantilla_head_ok": False,
+        "escritura_ok": False,
+        "presigned_url": None,
+        "error": None
+    }
+
+    try:
+        # 1) Leer metadatos de la plantilla (HEAD)
+        s3.head_object(Bucket=bucket_plantillas, Key=plantilla_key)
+        result["plantilla_head_ok"] = True
+
+        # 2) Escribir un archivo dummy en resultados
+        ts = int(time.time())
+        dummy_key = f"pruebas/dummy_{ts}.txt"
+        s3.put_object(
+            Bucket=bucket_resultados,
+            Key=dummy_key,
+            Body=b"hola desde app runner",
+            ContentType="text/plain"
+        )
+        result["escritura_ok"] = True
+
+        # 3) Generar URL firmada por 15 minutos (900 segundos)
+        url = s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": bucket_resultados, "Key": dummy_key},
+            ExpiresIn=900
+        )
+        result["presigned_url"] = url
+
+    except ClientError as e:
+        result["error"] = str(e)
+
+    return JSONResponse(result)
+
 def envvars(request):
     # Devuelve las variables de entorno que añadimos en apprunner.yaml
     return JSONResponse({
@@ -163,6 +211,7 @@ routes = [
     Route('/', endpoint=index),
     Route('/headers', endpoint=headers),
     Route('/env', endpoint=envvars),  # <- NUEVA RUTA
+    Route('/s3-test', endpoint=s3_test),   # <-- NUEVA RUTA
     Mount('/static', app=StaticFiles(directory='static'), name='static'),
 ]
 
