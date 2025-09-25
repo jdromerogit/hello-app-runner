@@ -160,11 +160,21 @@ def s3_test(request):
     s3 = boto3.client("s3")
     bucket_plantillas = getenv("S3_BUCKET_PLANTILLAS")
     bucket_resultados = getenv("S3_BUCKET_RESULTADOS")
-    plantilla_key = "pe_plantilla_solicitud_v2_test.docx"  # <-- tu archivo en S3
+
+    # Leer parámetros desde la URL (?tenant_id=pe&template_id=solicitud_v2&version_id=...)
+    qp = request.query_params
+    tenant_id   = qp.get("tenant_id", "pe")
+    template_id = qp.get("template_id", "solicitud_v2")
+    version_id  = qp.get("version_id")  # puede ser None
+
+    # Construimos la key estándar
+    plantilla_key = f"tenants/{tenant_id}/templates/{template_id}.docx"
 
     result = {
         "bucket_plantillas": bucket_plantillas,
         "bucket_resultados": bucket_resultados,
+        "plantilla_key": plantilla_key,
+        "version_id": version_id,
         "plantilla_head_ok": False,
         "escritura_ok": False,
         "presigned_url": None,
@@ -172,13 +182,16 @@ def s3_test(request):
     }
 
     try:
-        # 1) Leer metadatos de la plantilla (HEAD)
-        s3.head_object(Bucket=bucket_plantillas, Key=plantilla_key)
+        # 1) HEAD a la plantilla (si viene version_id, úsalo)
+        head_args = {"Bucket": bucket_plantillas, "Key": plantilla_key}
+        if version_id:
+            head_args["VersionId"] = version_id
+        s3.head_object(**head_args)
         result["plantilla_head_ok"] = True
 
         # 2) Escribir un archivo dummy en resultados
         ts = int(time.time())
-        dummy_key = f"pruebas/dummy_{ts}.txt"
+        dummy_key = f"pruebas/{tenant_id}/{template_id}/dummy_{ts}.txt"
         s3.put_object(
             Bucket=bucket_resultados,
             Key=dummy_key,
@@ -187,7 +200,7 @@ def s3_test(request):
         )
         result["escritura_ok"] = True
 
-        # 3) Generar URL firmada por 15 minutos (900 segundos)
+        # 3) URL firmada por 15 minutos
         url = s3.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": bucket_resultados, "Key": dummy_key},
@@ -199,6 +212,7 @@ def s3_test(request):
         result["error"] = str(e)
 
     return JSONResponse(result)
+
 
 def envvars(request):
     # Devuelve las variables de entorno que añadimos en apprunner.yaml
